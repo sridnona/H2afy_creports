@@ -1,0 +1,98 @@
+---
+title: "H2afy_paper_deg"
+author: "Sridhar"
+date: "7/7/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+getwd()  # returns 'Users/Me/Docs/Proj/vignettes'
+knitr::opts_chunk$set(root.dir = normalizePath(".."))  # should change the working directory to 'Users/Me/Docs/Proj'
+getwd()  # again returns 'Users/Me/Docs/Proj/vignettes'
+knitr::opts_chunk$get("root.dir")  # returns 'Users/Me/Docs/Proj'
+```
+
+## Gene Expression analysis 
+
+DEG code used in paper 
+Mutant U2AF1-Induced Alternative Splicing of H2afy (macroH2A1) Regulates B-Lymphopoiesis in Mice
+
+
+## Gene expression 
+
+
+```{r blp, echo=T }
+suppressPackageStartupMessages({
+library(DESeq2)
+library(ggplot2)
+library(pheatmap)
+})
+
+blp <- read.table('mergedCounts.tsv', header = T, sep='\t', stringsAsFactors = F)
+head(blp )
+get_signi_deseq2 <- function(df,mt,wt){
+  metak.s <- read.table('mm9_gene_biotype.tsv',header = T, stringsAsFactors = F, sep = '\t')
+  print("## print before ordering")
+  print(head(df))
+  df <- df[,order(names(df))]
+  df2 <- df
+  df2$ID <- rownames(df2)
+  print("## print after ordering")
+  print(head(df))
+  condition <- factor(c(rep("MT", mt), rep("WT", wt)))
+  coldata.s <- data.frame(row.names =colnames(df), condition) 
+  coldata.s
+  dds.s <- DESeqDataSetFromMatrix(countData = df, colData = coldata.s, design = ~condition)
+  dds.s <- estimateSizeFactors(dds.s)
+  dds.s <- DESeq(dds.s)
+  dim(dds.s)
+  dds.s$condition <- factor(dds.s$condition, levels = c("MT","WT"))
+  png(paste0("qc-dispersions.png"), 1000, 1000, pointsize=20)
+  plotDispEsts(dds.s, main="Dispersion plot")
+  dev.off()
+  res.s <- results(dds.s,independentFiltering = T, contrast = c("condition", "MT", "WT"))
+  print("###total number of genes significant at <0.1")
+  print(table(res.s$padj<0.1))
+  res.s <- res.s[order(res.s$padj), ]
+  resdata.s <- merge(as.data.frame(res.s), as.data.frame(counts(dds.s,normalize=TRUE)), by="row.names", sort=FALSE)
+  print("#normalize resdata.s")
+  print(head(resdata.s))
+  resdata.s.r <- merge(as.data.frame(res.s), as.data.frame(counts(dds.s)), by="row.names", sort=FALSE)
+  print("#normalize resdata.s.r")
+  print(head(resdata.s.r))
+  finalk.s <- merge(resdata.s, metak.s, by.x="Row.names", by.y="ensembl_gene_id")
+  finalk.s.r <- merge(resdata.s.r, metak.s, by.x="Row.names", by.y="ensembl_gene_id")
+  final.all <- merge(finalk.s, df2, by.x="Row.names",by.y="ID")
+  print("### writing to file")
+  write.csv(final.all, file=paste0("diffexpr-results_combined.csv"), row.names = F, quote = F)
+  library(pheatmap)
+  df.f.final.f <- dplyr::filter(resdata.s,  padj < 0.1)
+  dim(df.f.final.f)
+  print(head(df.f.final.f))
+  df.f.final.f <- df.f.final.f[,-c(2:7)]
+  names(df.f.final.f)
+  print(head(df.f.final.f))
+  d1 <- dim(df.f.final.f)
+  head(df.f.final.f)
+  heat <- pheatmap(df.f.final.f[-1], clustering_method = "average", 
+                   clustering_distance_rows = "euclidean",
+                   clustering_distance_cols = "euclidean",
+                   show_rownames = F,fontsize_row=10,
+                   show_colname = T,
+                   drop_levels = TRUE, scale = "row",
+                   # color = colorRampPalette(c("green","red"))(70),
+                   color = colorRampPalette(c("midnightblue","white","goldenrod1"))(70),
+                   main=paste0("UPGMA clustering method "," n=", d1))
+  pdf(paste0("heatmap_fdr_less_0.01.pdf"))
+  print(heat)
+  dev.off()
+  
+}
+# prefilter low expressed genes
+blp.pre <- rowSums(blp > 5) >= 4
+data.cnt <- blp[blp.pre,]
+dim(data.cnt)
+
+blp.whole.pre <-  get_signi_deseq2(data.cnt,4,4)
+```
